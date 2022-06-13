@@ -63,7 +63,7 @@ async function fetchLogs(
 }
 
 (async () => {
-  const browser = await playwright.chromium.launch({ headless: false });
+  const browser = await playwright.chromium.launch();
   const configuration = JSON.parse(
     fs.readFileSync("fios-logs.config.json").toString("utf-8")
   ) as Configuration;
@@ -84,5 +84,6 @@ async function fetchLogs(
       fetchLogs(browser, address, configuration.adminPassword, extenderLogData)
     ) ?? [];
   await Promise.all([router, ...extenders]);
+
   browser.close();
 })();
