@@ -15,9 +15,3 @@ Run the script with:
 ```bash
 npx ts-node src/get-logs.ts
 ```
-
-## TODO
-
- - Don't overwrite log files
- - Properly handle new log entries
- - Provide some means to stream logs to somewhere
