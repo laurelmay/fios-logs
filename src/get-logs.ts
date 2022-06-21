@@ -1,8 +1,13 @@
-import fs from "fs";
+import { promises as fs } from "fs";
 import path from "path";
 import * as playwright from "playwright";
 import { Configuration } from "./configuration";
 import { extenderLogData, LogData, routerLogData } from "./constants";
+
+interface DeviceLogs {
+  address: string;
+  logs: { logType: string; content: string }[];
+}
 
 async function initialize(
   browser: playwright.Browser,
@@ -15,7 +20,7 @@ async function initialize(
     // connecting to a single host.
     ignoreHTTPSErrors: true,
   });
-  return await context.newPage();
+  return context.newPage();
 }
 
 async function login(page: playwright.Page, password: string) {
@@ -49,25 +54,38 @@ async function fetchLogs(
   address: string,
   password: string,
   logFiles: LogData[]
-): Promise<void> {
-  const gatewayLogDir = path.join("logs", address);
-  fs.mkdirSync(gatewayLogDir, { recursive: true });
+): Promise<DeviceLogs> {
   const page = await initialize(browser, address);
   await login(page, password);
+  const logs: DeviceLogs = { address, logs: [] };
   for (const logFile of logFiles) {
-    const log = await downloadLog(page, logFile);
-    fs.writeFileSync(path.join(gatewayLogDir, `${logFile.logType}.log`), log);
+    logs.logs.push({
+      logType: logFile.logType,
+      content: (await downloadLog(page, logFile)).toString("utf-8"),
+    });
   }
   await logout(page);
   await page.context().close();
+  return logs;
 }
 
-(async () => {
-  const browser = await playwright.chromium.launch();
-  const configuration = JSON.parse(
-    fs.readFileSync("fios-logs.config.json").toString("utf-8")
-  ) as Configuration;
+async function writeLogs(logs: DeviceLogs): Promise<void[]> {
+  const logDir = path.join("logs", logs.address);
+  await fs.mkdir(logDir, { recursive: true });
+  if (!logDir) {
+    throw new Error("Unable to create logs directory");
+  }
+  return Promise.all(
+    logs.logs.map((log) =>
+      fs.writeFile(path.join(logDir, `${log.logType}.log`), log.content)
+    )
+  );
+}
 
+async function allDeviceLogs(
+  configuration: Configuration
+): Promise<DeviceLogs[]> {
+  const browser = await playwright.chromium.launch({ headless: false });
   // Allow each device to run in parallel. It seems like there are issues when various logs are requested in
   // parallel on the same device; each log gets truncate oddly if it is successfully fetched at all. Without
   // refactoring the process for how logs are requested in the first place, parallelizing at the device level
@@ -80,10 +98,25 @@ async function fetchLogs(
     routerLogData
   );
   const extenders =
-    configuration.extenderAddresses?.map((address) =>
-      fetchLogs(browser, address, configuration.adminPassword, extenderLogData)
+    configuration.extenders?.map((extender) =>
+      fetchLogs(
+        browser,
+        extender.address,
+        extender.adminPassword ?? configuration.adminPassword,
+        extenderLogData
+      )
     ) ?? [];
-  await Promise.all([router, ...extenders]);
-
+  const devices = await Promise.all([router, ...extenders]);
   browser.close();
-})();
+  return devices;
+}
+
+async function main(): Promise<void> {
+  const configuration = JSON.parse(
+    (await fs.readFile("fios-logs.config.json")).toString("utf-8")
+  );
+
+  await Promise.all((await allDeviceLogs(configuration)).map(writeLogs));
+}
+
+main();
