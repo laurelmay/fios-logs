@@ -2,8 +2,9 @@
 name: Triage Pull Requests
 on:
   pull_request_target:
-    - opened
-    - edited
+    types:
+      - opened
+      - edited
 
 permissions:
   # Required to read labels from issues
