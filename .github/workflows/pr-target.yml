@@ -1,0 +1,21 @@
+---
+name: Triage Pull Requests
+on:
+  pull_request_target:
+
+permissions:
+  # Required to read labels from issues
+  issues: read
+  # Required to set labels on the pull request
+  pull-requests: write
+
+jobs:
+  copy_labels:
+    name: Copy labels from issues
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply labels
+        uses: kylelaker/copy-issue-labels@v1
+        with:
+          exclude-labels: "good first issue,help wanted"
+
